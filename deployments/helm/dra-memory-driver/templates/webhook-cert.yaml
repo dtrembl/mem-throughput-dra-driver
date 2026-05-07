@@ -1,0 +1,19 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "dra-memory-driver.fullname" . }}-webhook-cert
+  namespace: {{ include "dra-memory-driver.namespace" . }}
+  labels:
+    {{- include "dra-memory-driver.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+spec:
+  dnsNames:
+    {{- $svcName := printf "%s-webhook" (include "dra-memory-driver.fullname" .) }}
+    {{- $svcNamespace := (include "dra-memory-driver.namespace" .) }}
+    - {{ $svcName }}.{{ $svcNamespace }}.svc
+  issuerRef:
+    kind: Issuer
+    name: {{ include "dra-memory-driver.fullname" . }}-webhook-issuer
+  secretName: {{ include "dra-memory-driver.fullname" . }}-webhook-cert
+{{- end }}

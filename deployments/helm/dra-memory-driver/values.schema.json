@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "deviceProfile": {
+      "type": "string",
+      "enum": [
+        "gpu",
+        "mem"
+      ]
+    },
+    "kubeletPlugin": {
+      "type": "object",
+      "properties": {
+        "numDevices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "numNuma": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

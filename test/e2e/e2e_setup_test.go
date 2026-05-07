@@ -51,7 +51,7 @@ var clientset *kubernetes.Clientset
 var dynamicClient dynamic.Interface
 var restMapper meta.RESTMapper
 
-const driverNamespace = "dra-example-driver"
+const driverNamespace = "dra-memory-driver"
 const driverPodSelector = "app.kubernetes.io/component=kubeletplugin"
 
 func init() {

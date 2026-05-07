@@ -14,7 +14,7 @@
 
 GOLANG_VERSION ?= 1.26.2
 
-DRIVER_NAME := dra-example-driver
+DRIVER_NAME := dra-memory-driver
 MODULE := sigs.k8s.io/$(DRIVER_NAME)
 
 VERSION  ?=

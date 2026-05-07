@@ -24,7 +24,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	gpuv1alpha1 "sigs.k8s.io/dra-example-driver/api/example.com/resource/gpu/v1alpha1"
+	gpuv1alpha1 "sigs.k8s.io/dra-memory-driver/api/example.com/resource/gpu/v1alpha1"
 )
 
 var _ = Describe("Test GPU allocation", func() {

@@ -29,8 +29,8 @@ import (
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdispec "tags.cncf.io/container-device-interface/specs-go"
 
-	configapi "sigs.k8s.io/dra-example-driver/api/example.com/resource/gpu/v1alpha1"
-	"sigs.k8s.io/dra-example-driver/internal/profiles"
+	configapi "sigs.k8s.io/dra-memory-driver/api/example.com/resource/gpu/v1alpha1"
+	"sigs.k8s.io/dra-memory-driver/internal/profiles"
 )
 
 const ProfileName = "gpu"

@@ -1,4 +1,4 @@
-module sigs.k8s.io/dra-example-driver
+module sigs.k8s.io/dra-memory-driver
 
 go 1.26.0
 

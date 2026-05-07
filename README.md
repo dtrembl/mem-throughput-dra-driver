@@ -34,8 +34,8 @@ We start by first cloning this repository and `cd`ing into it. All of the
 scripts and example Pod specs used in this demo are contained here, so take a
 moment to browse through the various files and see what's available:
 ```
-git clone https://github.com/kubernetes-sigs/dra-example-driver.git
-cd dra-example-driver
+git clone https://github.com/kubernetes-sigs/dra-memory-driver.git
+cd dra-memory-driver
 ```
 
 **Note**: The scripts will automatically use either `docker`, or `podman` as the container tool command, whichever
@@ -60,19 +60,19 @@ $ kubectl get pod -A
 NAMESPACE            NAME                                                               READY   STATUS    RESTARTS   AGE
 kube-system          coredns-5d78c9869d-6jrx9                                           1/1     Running   0          1m
 kube-system          coredns-5d78c9869d-dpr8p                                           1/1     Running   0          1m
-kube-system          etcd-dra-example-driver-cluster-control-plane                      1/1     Running   0          1m
+kube-system          etcd-dra-memory-driver-cluster-control-plane                      1/1     Running   0          1m
 kube-system          kindnet-g88bv                                                      1/1     Running   0          1m
 kube-system          kindnet-msp95                                                      1/1     Running   0          1m
-kube-system          kube-apiserver-dra-example-driver-cluster-control-plane            1/1     Running   0          1m
-kube-system          kube-controller-manager-dra-example-driver-cluster-control-plane   1/1     Running   0          1m
+kube-system          kube-apiserver-dra-memory-driver-cluster-control-plane            1/1     Running   0          1m
+kube-system          kube-controller-manager-dra-memory-driver-cluster-control-plane   1/1     Running   0          1m
 kube-system          kube-proxy-kgz4z                                                   1/1     Running   0          1m
 kube-system          kube-proxy-x6fnd                                                   1/1     Running   0          1m
-kube-system          kube-scheduler-dra-example-driver-cluster-control-plane            1/1     Running   0          1m
+kube-system          kube-scheduler-dra-memory-driver-cluster-control-plane            1/1     Running   0          1m
 local-path-storage   local-path-provisioner-7dbf974f64-9jmc7                            1/1     Running   0          1m
 ```
 
 The validating admission webhook is disabled by default. To enable it, install cert-manager and its CRDs, then
-set the `webhook.enabled=true` value when the dra-example-driver chart is installed.
+set the `webhook.enabled=true` value when the dra-memory-driver chart is installed.
 ```bash
 helm install \
   --repo https://charts.jetstack.io \
@@ -90,17 +90,17 @@ And then install the example resource driver via `helm`.
 ```bash
 helm upgrade -i \
   --create-namespace \
-  --namespace dra-example-driver \
-  dra-example-driver \
-  deployments/helm/dra-example-driver
+  --namespace dra-memory-driver \
+  dra-memory-driver \
+  deployments/helm/dra-memory-driver
 ```
 
 Double check the driver components have come up successfully:
 ```console
-$ kubectl get pod -n dra-example-driver
+$ kubectl get pod -n dra-memory-driver
 NAME                                                  READY   STATUS    RESTARTS   AGE
-dra-example-driver-kubeletplugin-qwmbl                1/1     Running   0          1m
-dra-example-driver-webhook-7d465fbd5b-n2wxt           1/1     Running   0          1m
+dra-memory-driver-kubeletplugin-qwmbl                1/1     Running   0          1m
+dra-memory-driver-webhook-7d465fbd5b-n2wxt           1/1     Running   0          1m
 ```
 
 And show the initial state of available GPU devices on the worker node:
@@ -112,23 +112,23 @@ items:
   kind: ResourceSlice
   metadata:
     creationTimestamp: "2024-12-09T16:17:09Z"
-    generateName: dra-example-driver-cluster-worker-gpu.example.com-
+    generateName: dra-memory-driver-cluster-worker-gpu.example.com-
     generation: 1
-    name: dra-example-driver-cluster-worker-gpu.example.com-rf2f7
+    name: dra-memory-driver-cluster-worker-gpu.example.com-rf2f7
     ownerReferences:
     - apiVersion: v1
       controller: true
       kind: Node
-      name: dra-example-driver-cluster-worker
+      name: dra-memory-driver-cluster-worker
       uid: 6633c2e1-d947-40c3-ba1f-78f3c9aad05c
     resourceVersion: "530"
     uid: d13fd8bd-0a71-43e1-ba79-ebd2fae4847a
   spec:
     driver: gpu.example.com
-    nodeName: dra-example-driver-cluster-worker
+    nodeName: dra-memory-driver-cluster-worker
     pool:
       generation: 0
-      name: dra-example-driver-cluster-worker
+      name: dra-memory-driver-cluster-worker
       resourceSliceCount: 1
     devices:
     - attributes:
