@@ -77,6 +77,9 @@ func (p Profile) ApplyConfig(config runtime.Object, results []*resourceapi.Devic
 func applyMemoryConfig(config *configapi.MemoryConfig, results []*resourceapi.DeviceRequestAllocationResult) (profiles.PerDeviceCDIContainerEdits, error) {
 	perDeviceEdits := make(profiles.PerDeviceCDIContainerEdits)
 
+	print("TESTTTTT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
+	print("Memory TP:" + config.MemoryThroughput.String() + "\n")
+
 	// Normalize the config to set any implied defaults.
 	if err := config.Normalize(); err != nil {
 		return nil, fmt.Errorf("error normalizing memory config: %w", err)
@@ -89,7 +92,7 @@ func applyMemoryConfig(config *configapi.MemoryConfig, results []*resourceapi.De
 
 	for _, result := range results {
 		envs := []string{
-			fmt.Sprintf("GPU_DEVICE_%s=%s", result.Device[4:], result.Device),
+			fmt.Sprintf("MEMORY_DEVICE_%s=%s", result.Device[4:], result.Device),
 		}
 
 		if !config.MemoryThroughput.IsZero() {
@@ -110,7 +113,8 @@ func (p Profile) EnumerateDevices() (resourceslice.DriverResources, error) {
 	devices := make([]resourceapi.Device, 0, p.numNuma)
 	for numaNode := 0; numaNode < p.numNuma; numaNode++ {
 		device := resourceapi.Device{
-			Name: fmt.Sprintf("numa-%d", numaNode),
+			Name:                     fmt.Sprintf("numa-%d", numaNode),
+			AllowMultipleAllocations: ptr.To(true),
 			Attributes: map[resourceapi.QualifiedName]resourceapi.DeviceAttribute{
 				"numa": {
 					IntValue: ptr.To(int64(numaNode)),
