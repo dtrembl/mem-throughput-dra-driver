@@ -18,7 +18,6 @@ package main
 
 import (
 	"fmt"
-	"slices"
 	"sync"
 
 	resourceapi "k8s.io/api/resource/v1"
@@ -34,9 +33,9 @@ import (
 type AllocatableDevices map[string]resourceapi.Device
 type PreparedClaims map[string]profiles.PreparedDevices
 
-type OpaqueDeviceConfig struct {
+type CapacityDeviceConfig struct {
 	Requests []string
-	Config   runtime.Object
+	Config   resourceapi.DeviceRequestAllocationResult
 }
 
 type DeviceState struct {
@@ -197,47 +196,36 @@ func (s *DeviceState) prepareDevices(claim *resourceapi.ResourceClaim) (profiles
 	// Check if any device request has admin access
 	hasAdminAccess := s.checkAdminAccess(claim)
 
-	// Retrieve the full set of device configs for the driver.
-	configs, err := GetOpaqueDeviceConfigs(
-		s.configDecoder,
-		s.driverName,
-		claim.Status.Allocation.Devices.Config,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error getting opaque device configs: %v", err)
+	fmt.Println("Claim status allocation devices results:", claim.Status.Allocation.Devices.Results)
+	if len(claim.Status.Allocation.Devices.Results) > 0 {
+		fmt.Println("Claim status allocation devices results request:", claim.Status.Allocation.Devices.Results[0].Request)
+		fmt.Println("Claim status allocation devices results driver:", claim.Status.Allocation.Devices.Results[0].Driver)
+		fmt.Println("Claim status allocation devices results pool:", claim.Status.Allocation.Devices.Results[0].Pool)
+		fmt.Println("Claim status allocation devices results device:", claim.Status.Allocation.Devices.Results[0].Device)
+		fmt.Println("Claim status allocation devices results admin access:", claim.Status.Allocation.Devices.Results[0].AdminAccess)
+		fmt.Println("Claim status allocation devices results consumable capacity:", claim.Status.Allocation.Devices.Results[0].ConsumedCapacity)
 	}
 
-	// Add the default GPU Config to the front of the config list with the
-	// lowest precedence. This guarantees there will be at least one config in
-	// the list with len(Requests) == 0 for the lookup below.
-	configs = slices.Insert(configs, 0, &OpaqueDeviceConfig{})
-
-	// Look through the configs and figure out which one will be applied to
-	// each device allocation result based on their order of precedence.
-	configResultsMap := make(map[runtime.Object][]*resourceapi.DeviceRequestAllocationResult)
-	for _, result := range claim.Status.Allocation.Devices.Results {
-		// The claim may include allocations meant for other drivers.
-		if result.Driver != s.driverName {
-			continue
+	configsMap := []*CapacityDeviceConfig{}
+	if len(claim.Status.Allocation.Devices.Results) > 0 {
+		configs, err := GetCapacityDeviceConfigs(
+			s.driverName,
+			claim.Status.Allocation.Devices.Results,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error getting capacity device configs: %v", err)
 		}
-		if _, exists := s.allocatable[result.Device]; !exists {
-			return nil, fmt.Errorf("requested device is not allocatable: %v", result.Device)
-		}
-		for _, c := range slices.Backward(configs) {
-			if len(c.Requests) == 0 || slices.Contains(c.Requests, result.Request) {
-				configResultsMap[c.Config] = append(configResultsMap[c.Config], &result)
-				break
-			}
-		}
+		configsMap = configs
 	}
 
 	// Apply all configs associated with devices that need to be prepared.
 	// Track container edits generated from applying the config to the set
 	// of device allocation results.
 	perDeviceCDIContainerEdits := make(profiles.PerDeviceCDIContainerEdits)
-	for config, results := range configResultsMap {
+	for _, config := range configsMap {
 		// Apply the config to the list of results associated with it.
-		containerEdits, err := s.configHandler.ApplyConfig(config, results)
+
+		containerEdits, err := s.configHandler.ApplyConfig(&config.Config)
 		if err != nil {
 			return nil, fmt.Errorf("error applying config: %w", err)
 		}
@@ -251,20 +239,18 @@ func (s *DeviceState) prepareDevices(claim *resourceapi.ResourceClaim) (profiles
 	// Walk through each config and its associated device allocation results
 	// and construct the list of prepared devices to return.
 	var preparedDevices profiles.PreparedDevices
-	for _, results := range configResultsMap {
-		for _, result := range results {
-			device := &profiles.PreparedDevice{
-				Device: drapbv1.Device{
-					RequestNames: []string{result.Request},
-					PoolName:     result.Pool,
-					DeviceName:   result.Device,
-					CdiDeviceIds: s.cdi.GetClaimDevices(string(claim.UID), []string{result.Device}),
-				},
-				ContainerEdits: perDeviceCDIContainerEdits[result.Device],
-				AdminAccess:    hasAdminAccess,
-			}
-			preparedDevices = append(preparedDevices, device)
+	for _, config := range configsMap {
+		device := &profiles.PreparedDevice{
+			Device: drapbv1.Device{
+				RequestNames: []string{config.Config.Request},
+				PoolName:     config.Config.Pool,
+				DeviceName:   config.Config.Device,
+				CdiDeviceIds: s.cdi.GetClaimDevices(string(claim.UID), []string{config.Config.Device}),
+			},
+			ContainerEdits: perDeviceCDIContainerEdits[config.Config.Device],
+			AdminAccess:    hasAdminAccess,
 		}
+		preparedDevices = append(preparedDevices, device)
 	}
 
 	return preparedDevices, nil
@@ -286,68 +272,25 @@ func (s *DeviceState) checkAdminAccess(claim *resourceapi.ResourceClaim) bool {
 	return false
 }
 
-// GetOpaqueDeviceConfigs returns an ordered list of the configs contained in possibleConfigs for this driver.
-//
-// Configs can either come from the resource claim itself or from the device
-// class associated with the request. Configs coming directly from the resource
-// claim take precedence over configs coming from the device class. Moreover,
-// configs found later in the list of configs attached to its source take
-// precedence over configs found earlier in the list for that source.
-//
-// All of the configs relevant to the driver from the list of possibleConfigs
-// will be returned in order of precedence (from lowest to highest). If no
-// configs are found, nil is returned.
-func GetOpaqueDeviceConfigs(
-	decoder runtime.Decoder,
+func GetCapacityDeviceConfigs(
 	driverName string,
-	possibleConfigs []resourceapi.DeviceAllocationConfiguration,
-) ([]*OpaqueDeviceConfig, error) {
-	// Collect all configs in order of reverse precedence.
-	var classConfigs []resourceapi.DeviceAllocationConfiguration
-	var claimConfigs []resourceapi.DeviceAllocationConfiguration
-	var candidateConfigs []resourceapi.DeviceAllocationConfiguration
-	for _, config := range possibleConfigs {
-		switch config.Source {
-		case resourceapi.AllocationConfigSourceClass:
-			classConfigs = append(classConfigs, config)
-		case resourceapi.AllocationConfigSourceClaim:
-			claimConfigs = append(claimConfigs, config)
-		default:
-			return nil, fmt.Errorf("invalid config source: %v", config.Source)
-		}
-	}
-	candidateConfigs = append(candidateConfigs, classConfigs...)
-	candidateConfigs = append(candidateConfigs, claimConfigs...)
+	results []resourceapi.DeviceRequestAllocationResult,
+) ([]*CapacityDeviceConfig, error) {
+	var configs []*CapacityDeviceConfig
 
-	// Decode all configs that are relevant for the driver.
-	var resultConfigs []*OpaqueDeviceConfig
-	for _, config := range candidateConfigs {
-		// If this is nil, the driver doesn't support some future API extension
-		// and needs to be updated.
-		if config.Opaque == nil {
-			return nil, fmt.Errorf("only opaque parameters are supported by this driver")
-		}
-
-		// Configs for different drivers may have been specified because a
-		// single request can be satisfied by different drivers. This is not
-		// an error -- drivers must skip over other driver's configs in order
-		// to support this.
-		if config.Opaque.Driver != driverName {
+	for _, result := range results {
+		// Skip results for other drivers
+		if result.Driver != driverName {
 			continue
 		}
 
-		decodedConfig, err := runtime.Decode(decoder, config.Opaque.Parameters.Raw)
-		if err != nil {
-			return nil, fmt.Errorf("error decoding config parameters: %w", err)
+		// Create a config for this result
+		config := &CapacityDeviceConfig{
+			Requests: []string{result.Request},
+			Config:   result,
 		}
-
-		resultConfig := &OpaqueDeviceConfig{
-			Requests: config.Requests,
-			Config:   decodedConfig,
-		}
-
-		resultConfigs = append(resultConfigs, resultConfig)
+		configs = append(configs, config)
 	}
 
-	return resultConfigs, nil
+	return configs, nil
 }

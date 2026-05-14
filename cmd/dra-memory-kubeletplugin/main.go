@@ -32,7 +32,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/dra-memory-driver/internal/profiles"
-	"sigs.k8s.io/dra-memory-driver/internal/profiles/gpu"
 	"sigs.k8s.io/dra-memory-driver/internal/profiles/memorythroughput"
 	"sigs.k8s.io/dra-memory-driver/pkg/flags"
 )
@@ -66,9 +65,6 @@ type Config struct {
 }
 
 var validProfiles = map[string]func(flags Flags) profiles.Profile{
-	gpu.ProfileName: func(flags Flags) profiles.Profile {
-		return gpu.NewProfile(flags.nodeName, flags.numDevices)
-	},
 	memorythroughput.ProfileName: func(flags Flags) profiles.Profile {
 		return memorythroughput.NewProfile(flags.nodeName, flags.numNuma)
 	},
@@ -122,13 +118,6 @@ func newApp() *cli.App {
 			EnvVars:     []string{"CDI_ROOT"},
 		},
 		&cli.IntFlag{
-			Name:        "num-devices",
-			Usage:       "The number of devices to be generated. Only relevant for the " + gpu.ProfileName + " profile.",
-			Value:       8,
-			Destination: &flags.numDevices,
-			EnvVars:     []string{"NUM_DEVICES"},
-		},
-		&cli.IntFlag{
 			Name:        "num-numa",
 			Usage:       "The number of NUMA nodes to be generated. Only relevant for the " + memorythroughput.ProfileName + " profile.",
 			Value:       1,
@@ -159,7 +148,7 @@ func newApp() *cli.App {
 		&cli.StringFlag{
 			Name:        "device-profile",
 			Usage:       fmt.Sprintf("Name of the device profile. Valid values are %q.", validProfileNames),
-			Value:       gpu.ProfileName,
+			Value:       memorythroughput.ProfileName,
 			Destination: &flags.profile,
 			EnvVars:     []string{"DEVICE_PROFILE"},
 		},

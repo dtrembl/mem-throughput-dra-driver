@@ -35,4 +35,3 @@ LABEL summary="Example DRA resource driver for Kubernetes"
 LABEL description="See summary"
 
 COPY --from=build /artifacts/dra-memory-kubeletplugin /usr/bin/dra-memory-kubeletplugin
-COPY --from=build /artifacts/dra-memory-webhook       /usr/bin/dra-memory-webhook

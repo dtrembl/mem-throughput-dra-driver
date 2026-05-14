@@ -59,7 +59,7 @@ type ConfigHandler interface {
 	// ApplyConfig applies a configuration to a set of device allocation
 	// results. When `config` is nil, the profile's default configuration should
 	// be applied.
-	ApplyConfig(config runtime.Object, results []*resourceapi.DeviceRequestAllocationResult) (PerDeviceCDIContainerEdits, error)
+	ApplyConfig(results *resourceapi.DeviceRequestAllocationResult) (PerDeviceCDIContainerEdits, error)
 }
 
 // NoopConfigHandler implements a [ConfigHandler] that does not allow
@@ -67,8 +67,8 @@ type ConfigHandler interface {
 type NoopConfigHandler struct{}
 
 // ApplyConfig implements [ConfigHandler].
-func (n NoopConfigHandler) ApplyConfig(config runtime.Object, results []*resourceapi.DeviceRequestAllocationResult) (PerDeviceCDIContainerEdits, error) {
-	if config != nil {
+func (n NoopConfigHandler) ApplyConfig(results *resourceapi.DeviceRequestAllocationResult) (PerDeviceCDIContainerEdits, error) {
+	if results != nil {
 		return nil, errors.New("configuration not allowed")
 	}
 	return nil, nil

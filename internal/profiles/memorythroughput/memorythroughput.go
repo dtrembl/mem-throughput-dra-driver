@@ -60,25 +60,23 @@ func (p Profile) Validate(config runtime.Object) error {
 }
 
 // ApplyConfig implements [profiles.ConfigHandler].
-func (p Profile) ApplyConfig(config runtime.Object, results []*resourceapi.DeviceRequestAllocationResult) (profiles.PerDeviceCDIContainerEdits, error) {
-	if config == nil {
-		config = configapi.DefaultMemoryConfig()
+func (p Profile) ApplyConfig(results *resourceapi.DeviceRequestAllocationResult) (profiles.PerDeviceCDIContainerEdits, error) {
+	if results == nil {
+		return nil, nil
 	}
-	if config, ok := config.(*configapi.MemoryConfig); ok {
-		return applyMemoryConfig(config, results)
-	}
-	return nil, fmt.Errorf("runtime object is not a recognized configuration")
+	return applyMemoryConfig(results)
 }
 
 // In this example driver there is no actual configuration applied. We simply
 // define a set of environment variables to be injected into the containers
 // that include a given device. A real driver would likely need to do some sort
 // of hardware configuration as well, based on the config passed in.
-func applyMemoryConfig(config *configapi.MemoryConfig, results []*resourceapi.DeviceRequestAllocationResult) (profiles.PerDeviceCDIContainerEdits, error) {
+func applyMemoryConfig(result *resourceapi.DeviceRequestAllocationResult) (profiles.PerDeviceCDIContainerEdits, error) {
 	perDeviceEdits := make(profiles.PerDeviceCDIContainerEdits)
 
-	print("TESTTTTT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
-	print("Memory TP:" + config.MemoryThroughput.String() + "\n")
+	config := &configapi.MemoryConfig{
+		MemoryThroughput: result.ConsumedCapacity["mem"],
+	}
 
 	// Normalize the config to set any implied defaults.
 	if err := config.Normalize(); err != nil {
@@ -90,14 +88,16 @@ func applyMemoryConfig(config *configapi.MemoryConfig, results []*resourceapi.De
 		return nil, fmt.Errorf("error validating memory config: %w", err)
 	}
 
-	for _, result := range results {
+	if result != nil {
 		envs := []string{
-			fmt.Sprintf("MEMORY_DEVICE_%s=%s", result.Device[4:], result.Device),
+			fmt.Sprintf("MEM_DEVICE_NUMA=%s", result.Device[5:]),
 		}
 
 		if !config.MemoryThroughput.IsZero() {
-			envs = append(envs, fmt.Sprintf("NUMA_%s_MEMORY_THROUGHPUT=%s", result.Device[4:], config.MemoryThroughput.String()))
+			envs = append(envs, fmt.Sprintf("MEM_DEVICE_NUMA_%s_THROUGHPUT_=%s", result.Device[5:], config.MemoryThroughput.String()))
 		}
+
+		fmt.Println("INJECTING envs : ", envs)
 
 		edits := &cdispec.ContainerEdits{
 			Env: envs,
@@ -110,6 +110,7 @@ func applyMemoryConfig(config *configapi.MemoryConfig, results []*resourceapi.De
 }
 
 func (p Profile) EnumerateDevices() (resourceslice.DriverResources, error) {
+	fmt.Println("Enumrate devices!!")
 	devices := make([]resourceapi.Device, 0, p.numNuma)
 	for numaNode := 0; numaNode < p.numNuma; numaNode++ {
 		device := resourceapi.Device{
@@ -122,7 +123,7 @@ func (p Profile) EnumerateDevices() (resourceslice.DriverResources, error) {
 			},
 			Capacity: map[resourceapi.QualifiedName]resourceapi.DeviceCapacity{
 				"mem": {
-					Value: resource.MustParse(fmt.Sprintf("%dGi", 100)),
+					Value: resource.MustParse(fmt.Sprintf("%dGi", (numaNode+1)*10)),
 				},
 			},
 		}
