@@ -33,7 +33,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
-	resourceapi "k8s.io/api/resource/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -96,53 +95,8 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	groupResources, err := restmapper.GetAPIGroupResources(clientset.Discovery())
 	Expect(err).NotTo(HaveOccurred())
 	restMapper = restmapper.NewDiscoveryRESTMapper(groupResources)
-
-	// Check if the webhook is ready
-	// Even after verifying that the Pod is Ready and the expected Endpoints resource
-	// exists with the Pod's IP, the webhook still seems to have "connection refused"
-	// issues, so retry here until we can ensure it's available before the real tests start.
-	By("Ensuring the webhook is ready")
-	verifyWebhook(ctx)
 })
-//
-func verifyWebhook(ctx context.Context) {
-	GinkgoHelper()
-	fmt.Fprintln(GinkgoWriter, "Waiting for webhook to be available")
 
-	// Create a simple ResourceClaim to test webhook availability
-	testClaim := &resourceapi.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "webhook-test",
-			Namespace: "default",
-		},
-		Spec: resourceapi.ResourceClaimSpec{
-			Devices: resourceapi.DeviceClaim{
-				Requests: []resourceapi.DeviceRequest{
-					{
-						Name: "memory",
-						Exactly: &resourceapi.ExactDeviceRequest{
-							DeviceClassName: "mem.example.com",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	// Wait for webhook to be available by trying to create the ResourceClaim with dry-run mode
-	Eventually(func() error {
-		_, err := clientset.ResourceV1().ResourceClaims("default").Create(
-			ctx,
-			testClaim,
-			metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}},
-		)
-		if err != nil {
-			return fmt.Errorf("webhook not ready: %w", err)
-		}
-		return nil
-	}, "30s", "1s").WithContext(ctx).Should(Succeed())
-}
-//
 // deployManifest creates resources from a manifest file and registers cleanup
 // and failure diagnostics via DeferCleanup.
 func deployManifest(ctx context.Context, namespace string, manifestFile string) {
@@ -156,7 +110,7 @@ func deployManifest(ctx context.Context, namespace string, manifestFile string) 
 	}, NodeTimeout(30*time.Second))
 	DeferCleanup(dumpDiagnosticsOnFailure, namespace, NodeTimeout(15*time.Second))
 }
-//
+
 // dumpDiagnosticsOnFailure collects pod status, events, and driver logs
 // when a test has failed. Intended for use as a DeferCleanup callback.
 func dumpDiagnosticsOnFailure(ctx context.Context, namespace string) {
@@ -214,7 +168,7 @@ func dumpDiagnosticsOnFailure(ctx context.Context, namespace string) {
 		}
 	}
 }
-//
+
 // parseManifests reads a YAML file and returns a slice of unstructured objects
 func parseManifests(manifestPath string) ([]*unstructured.Unstructured, error) {
 	data, err := os.ReadFile(manifestPath)
@@ -294,7 +248,7 @@ func createObjects(ctx context.Context, dynamicClient dynamic.Interface, objects
 	}
 	return nil
 }
-//
+
 // deleteObjects deletes a list of unstructured objects using the dynamic client
 // and waits for them to be fully removed.
 func deleteObjects(ctx context.Context, dynamicClient dynamic.Interface, objects []*unstructured.Unstructured) {
@@ -375,15 +329,6 @@ func deleteManifest(ctx context.Context, dynamicClient dynamic.Interface, manife
 }
 
 // createManifestWithDryRun creates objects from a manifest with dry-run mode
-func createManifestWithDryRun(ctx context.Context, dynamicClient dynamic.Interface, manifestPath string) error {
-	GinkgoHelper()
-	objects, err := parseManifests(manifestPath)
-	if err != nil {
-		return err
-	}
-	return createObjects(ctx, dynamicClient, objects, true)
-}
-
 func checkPodsReadyAndRunning(ctx context.Context, namespace string, pods []string) {
 	GinkgoHelper()
 	// check if the pods are Ready and Running
@@ -408,7 +353,7 @@ func checkPodsReadyAndRunning(ctx context.Context, namespace string, pods []stri
 		}, "120s", "5s").Should(Succeed())
 	}
 }
-//
+
 // getMemoryDevicesFromPodLogs retrieves pod logs and extracts memory device information.
 // Returns errors via g so callers inside Eventually can retry on transient failures.
 func getMemoryDevicesFromPodLogs(ctx context.Context, g Gomega, namespace, pod, container string) ([]string, string) {
@@ -462,22 +407,6 @@ func getNumaID(numaDevice string) string {
 	return ""
 }
 
-// verifyMemoryAllocation checks that a pod/container has the expected number of memory devices
-// and tracks them in observedDevices to ensure no device is claimed twice within a test
-func verifyMemoryAllocation(ctx context.Context, namespace, podName, containerName string, expectedDeviceCount int, observedDevices map[string]string) {
-	GinkgoHelper()
-	Eventually(func(g Gomega) {
-		// Get pod logs and extract memory devices
-		devices, _ := getMemoryDevicesFromPodLogs(ctx, g, namespace, podName, containerName)
-		verifyDeviceCount(g, devices, expectedDeviceCount, namespace, podName, containerName)
-
-		// Verify each device is unclaimed
-		for _, device := range devices {
-			claimNewDevice(g, observedDevices, device, namespace, podName, containerName)
-		}
-	}, checkPodLogsTimeout, checkPodLogsInterval).Should(Succeed())
-}
-
 // verifyMemoryAllocationWithCapacity checks that a pod/container has the expected number of memory devices
 // and verifies that the allocated capacity does not exceed the requested capacity
 func verifyMemoryAllocationWithCapacity(ctx context.Context, namespace, podName, containerName string, expectedDeviceCount int, expectedCapacity string) {
@@ -491,7 +420,7 @@ func verifyMemoryAllocationWithCapacity(ctx context.Context, namespace, podName,
 		for _, device := range devices {
 			numaID := getNumaID(device)
 			allocatedCapacity := extractMemoryProperty(logs, numaID, "THROUGHPUT")
-			
+
 			if allocatedCapacity != "" {
 				verifyCapacityDoesNotExceed(g, allocatedCapacity, expectedCapacity, namespace, podName, containerName, device)
 			} else {
@@ -505,52 +434,26 @@ func verifyMemoryAllocationWithCapacity(ctx context.Context, namespace, podName,
 // verifyCapacityDoesNotExceed checks that the allocated capacity does not exceed the expected capacity
 func verifyCapacityDoesNotExceed(g Gomega, allocatedCapacity, expectedCapacity, namespace, podName, containerName, device string) {
 	GinkgoHelper()
-	
+
 	// Parse the allocated and expected capacity as resource.Quantity
 	allocated, err := resource.ParseQuantity(allocatedCapacity)
 	g.Expect(err).NotTo(HaveOccurred(),
 		fmt.Sprintf("Failed to parse allocated capacity %s for pod %s/%s, container %s, device %s",
 			allocatedCapacity, namespace, podName, containerName, device))
-	
+
 	expected, err := resource.ParseQuantity(expectedCapacity)
 	g.Expect(err).NotTo(HaveOccurred(),
 		fmt.Sprintf("Failed to parse expected capacity %s for pod %s/%s, container %s, device %s",
 			expectedCapacity, namespace, podName, containerName, device))
-	
+
 	// Compare: allocated should be <= expected
 	comparison := allocated.Cmp(expected)
 	g.Expect(comparison).To(BeNumerically("<=", 0),
 		fmt.Sprintf("Pod %s/%s, container %s, device %s: allocated capacity %s exceeds expected capacity %s",
 			namespace, podName, containerName, device, allocatedCapacity, expectedCapacity))
-	
+
 	fmt.Fprintf(GinkgoWriter, "Pod %s/%s, container %s, device %s: allocated capacity %s <= expected capacity %s ✓\n",
 		namespace, podName, containerName, device, allocatedCapacity, expectedCapacity)
-}
-
-// verifyDRAAdminAccess verifies that DRA_ADMIN_ACCESS is set to the expected value
-func verifyDRAAdminAccess(ctx context.Context, namespace, podName, containerName, expectedValue string) {
-	GinkgoHelper()
-	Eventually(func(g Gomega) {
-		_, logs := getMemoryDevicesFromPodLogs(ctx, g, namespace, podName, containerName)
-		draAdminAccess := extractMemoryProperty(logs, "", "DRA_ADMIN_ACCESS")
-		g.Expect(draAdminAccess).To(Equal(expectedValue),
-			fmt.Sprintf("Expected Pod %s/%s, container %s to have DRA_ADMIN_ACCESS=%s, but got %s",
-				namespace, podName, containerName, expectedValue, draAdminAccess))
-		fmt.Fprintf(GinkgoWriter, "Pod %s/%s, container %s has DRA_ADMIN_ACCESS=%s\n",
-			namespace, podName, containerName, draAdminAccess)
-	}, checkPodLogsTimeout, checkPodLogsInterval).Should(Succeed())
-}
-
-// claimNewDevice verifies that a device is unclaimed and adds it to observedDevices
-func claimNewDevice(g Gomega, observedDevices map[string]string, device, namespace, podName, containerName string) {
-	GinkgoHelper()
-	claimedBy, alreadySeen := observedDevices[device]
-	g.Expect(alreadySeen).To(BeFalse(),
-		fmt.Sprintf("Pod %s/%s, container %s should have a new memory device but claimed %s which is already claimed by %s",
-			namespace, podName, containerName, device, claimedBy))
-	observedDevices[device] = namespace + "/" + podName
-	fmt.Fprintf(GinkgoWriter, "Pod %s/%s, container %s claimed %s\n",
-		namespace, podName, containerName, device)
 }
 
 // verifyDeviceCount verifies that a container has the expected number of memory devices
@@ -561,64 +464,236 @@ func verifyDeviceCount(g Gomega, devices []string, expectedDeviceCount int, name
 			namespace, podName, containerName, expectedDeviceCount, len(devices), devices))
 }
 
-// verifyMemoryProperties verifies memory sharing strategy and an optional additional property
-func verifyMemoryProperties(g Gomega, logs, namespace, podName, containerName string, devices []string, expectedSharingStrategy, expectedProperty, expectedPropertyValue string) {
+// checkOneOfTwoPodsRunning verifies that exactly one of the two pods is running and one is pending
+func checkOneOfTwoPodsRunning(ctx context.Context, namespace string, pods []string) {
 	GinkgoHelper()
-	sharingStrategy := extractMemoryProperty(logs, getNumaID(devices[0]), "SHARING_STRATEGY")
-	g.Expect(sharingStrategy).To(Equal(expectedSharingStrategy),
-		fmt.Sprintf("Expected Pod %s/%s, container %s to have sharing strategy %s, got %s",
-			namespace, podName, containerName, expectedSharingStrategy, sharingStrategy))
+	Expect(pods).To(HaveLen(2), "This function expects exactly 2 pods")
 
-	if expectedProperty != "" {
-		propertyValue := extractMemoryProperty(logs, getNumaID(devices[0]), expectedProperty)
-		g.Expect(propertyValue).To(Equal(expectedPropertyValue),
-			fmt.Sprintf("Expected Pod %s/%s, container %s to have %s=%s, got %s",
-				namespace, podName, containerName, expectedProperty, expectedPropertyValue, propertyValue))
-	}
+	Eventually(func(g Gomega) {
+		pod0, err := clientset.CoreV1().Pods(namespace).Get(ctx, pods[0], metav1.GetOptions{})
+		g.Expect(err).NotTo(HaveOccurred(), "Failed to get pod %s/%s", namespace, pods[0])
+
+		pod1, err := clientset.CoreV1().Pods(namespace).Get(ctx, pods[1], metav1.GetOptions{})
+		g.Expect(err).NotTo(HaveOccurred(), "Failed to get pod %s/%s", namespace, pods[1])
+
+		// Check that one pod is Running and one is Pending
+		runningCount := 0
+		pendingCount := 0
+
+		if pod0.Status.Phase == v1.PodRunning {
+			runningCount++
+		} else if pod0.Status.Phase == v1.PodPending {
+			pendingCount++
+		}
+
+		if pod1.Status.Phase == v1.PodRunning {
+			runningCount++
+		} else if pod1.Status.Phase == v1.PodPending {
+			pendingCount++
+		}
+
+		g.Expect(runningCount).To(Equal(1),
+			"Expected exactly 1 pod to be Running, got %d (pod0: %s, pod1: %s)",
+			runningCount, pod0.Status.Phase, pod1.Status.Phase)
+		g.Expect(pendingCount).To(Equal(1),
+			"Expected exactly 1 pod to be Pending, got %d (pod0: %s, pod1: %s)",
+			pendingCount, pod0.Status.Phase, pod1.Status.Phase)
+	}, "120s", "5s").Should(Succeed())
 }
 
-// podContainer identifies a specific container in a specific pod.
-type podContainer struct {
-	pod       string
-	container string
-}
-
-// sharingGroup describes a set of pod/containers that should all share the same memory device,
-// along with the expected sharing properties.
-type sharingGroup struct {
-	// members lists the pod/container pairs that should all see the same memory device.
-	members []podContainer
-	// expectedStrategy is the expected memory sharing strategy (e.g. "TimeSlicing", "SpacePartitioning").
-	expectedStrategy string
-	// expectedProperty is the name of the memory property to verify (e.g. "TIMESLICE_INTERVAL", "PARTITION_COUNT").
-	expectedProperty string
-	// expectedPropValue is the expected value of expectedProperty (e.g. "Default", "Long", "10").
-	expectedPropValue string
-}
-
-// verifySharedMemoryGroup verifies that all members of a sharing group see the same memory device
-// and that the device has the expected sharing properties.
-func verifySharedMemoryGroup(ctx context.Context, namespace string, group sharingGroup) {
+// findRunningPod returns the name of the pod that is running from the given list
+func findRunningPod(ctx context.Context, namespace string, pods []string) string {
 	GinkgoHelper()
-	var firstDevice string
-	for i, member := range group.members {
-		Eventually(func(g Gomega) {
-			devices, logs := getMemoryDevicesFromPodLogs(ctx, g, namespace, member.pod, member.container)
-			verifyDeviceCount(g, devices, 1, namespace, member.pod, member.container)
-			if i == 0 {
-				firstDevice = devices[0]
-				fmt.Fprintf(GinkgoWriter, "Pod %s/%s, container %s has memory device %s (first in group)\n",
-					namespace, member.pod, member.container, firstDevice)
-			} else {
-				g.Expect(devices[0]).To(Equal(firstDevice),
-					fmt.Sprintf("Pod %s/%s, container %s should claim the same memory device as previous, but got %s instead of %s",
-						namespace, member.pod, member.container, devices[0], firstDevice))
-				fmt.Fprintf(GinkgoWriter, "Pod %s/%s, container %s shares memory device %s\n",
-					namespace, member.pod, member.container, devices[0])
+	for _, podName := range pods {
+		pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred(), "Failed to get pod %s/%s", namespace, podName)
+
+		if pod.Status.Phase == v1.PodRunning {
+			// Verify the pod is also Ready
+			ready := false
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
+					ready = true
+					break
+				}
 			}
-			verifyMemoryProperties(g, logs, namespace, member.pod, member.container, devices,
-				group.expectedStrategy, group.expectedProperty, group.expectedPropValue)
-		}, checkPodLogsTimeout, checkPodLogsInterval).Should(Succeed())
+			if ready {
+				fmt.Fprintf(GinkgoWriter, "Found running pod: %s/%s\n", namespace, podName)
+				return podName
+			}
+		}
 	}
+	Fail(fmt.Sprintf("No running pod found in namespace %s among pods %v", namespace, pods))
+	return ""
 }
-//
+
+// checkPodPendingDueToInsufficientResources verifies that a pod is pending due to insufficient resources
+func checkPodPendingDueToInsufficientResources(ctx context.Context, namespace, podName string) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+		g.Expect(err).NotTo(HaveOccurred(), "Failed to get pod %s/%s", namespace, podName)
+
+		g.Expect(pod.Status.Phase).To(Equal(v1.PodPending),
+			"Expected pod %s/%s to be Pending, but got %s", namespace, podName, pod.Status.Phase)
+
+		// Check pod conditions or events to verify it's pending due to resource constraints
+		// Look for PodScheduled condition = False
+		scheduled := true
+		for _, cond := range pod.Status.Conditions {
+			if cond.Type == v1.PodScheduled && cond.Status == v1.ConditionFalse {
+				scheduled = false
+				fmt.Fprintf(GinkgoWriter, "Pod %s/%s is unscheduled: %s - %s\n",
+					namespace, podName, cond.Reason, cond.Message)
+				break
+			}
+		}
+		g.Expect(scheduled).To(BeFalse(),
+			"Expected pod %s/%s to be unscheduled, but PodScheduled condition is True or missing",
+			namespace, podName)
+	}, "120s", "5s").Should(Succeed())
+
+	fmt.Fprintf(GinkgoWriter, "Verified pod %s/%s is pending due to insufficient resources\n",
+		namespace, podName)
+}
+
+// verifyAllocatedCapacityWithinLimit verifies that the allocated capacity is within the maximum available limit
+func verifyAllocatedCapacityWithinLimit(ctx context.Context, namespace, podName, containerName, maxLimit string) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		// Get pod logs and extract memory devices
+		devices, logs := getMemoryDevicesFromPodLogs(ctx, g, namespace, podName, containerName)
+		g.Expect(devices).NotTo(BeEmpty(),
+			"Expected pod %s/%s, container %s to have at least one device", namespace, podName, containerName)
+
+		// Verify allocated capacity for each device is within limit
+		for _, device := range devices {
+			numaID := getNumaID(device)
+			allocatedCapacity := extractMemoryProperty(logs, numaID, "THROUGHPUT")
+
+			if allocatedCapacity != "" {
+				allocated, err := resource.ParseQuantity(allocatedCapacity)
+				g.Expect(err).NotTo(HaveOccurred(),
+					fmt.Sprintf("Failed to parse allocated capacity %s for pod %s/%s, container %s, device %s",
+						allocatedCapacity, namespace, podName, containerName, device))
+
+				maxLimitQty, err := resource.ParseQuantity(maxLimit)
+				g.Expect(err).NotTo(HaveOccurred(),
+					fmt.Sprintf("Failed to parse max limit %s", maxLimit))
+
+				comparison := allocated.Cmp(maxLimitQty)
+				g.Expect(comparison).To(BeNumerically("<=", 0),
+					fmt.Sprintf("Pod %s/%s, container %s, device %s: allocated capacity %s exceeds maximum available capacity %s",
+						namespace, podName, containerName, device, allocatedCapacity, maxLimit))
+
+				fmt.Fprintf(GinkgoWriter, "Pod %s/%s, container %s, device %s: allocated capacity %s <= max limit %s ✓\n",
+					namespace, podName, containerName, device, allocatedCapacity, maxLimit)
+			}
+		}
+	}, checkPodLogsTimeout, checkPodLogsInterval).Should(Succeed())
+}
+
+// checkAllPodsPending verifies that all pods in the list are in Pending state
+func checkAllPodsPending(ctx context.Context, namespace string, pods []string) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		for _, podName := range pods {
+			pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred(), "Failed to get pod %s/%s", namespace, podName)
+
+			g.Expect(pod.Status.Phase).To(Equal(v1.PodPending),
+				"Expected pod %s/%s to be Pending, but got %s", namespace, podName, pod.Status.Phase)
+
+			fmt.Fprintf(GinkgoWriter, "Pod %s/%s is in Pending state ✓\n", namespace, podName)
+		}
+	}, "120s", "5s").Should(Succeed())
+
+	fmt.Fprintf(GinkgoWriter, "Verified all %d pods are in Pending state\n", len(pods))
+}
+
+// verifyRequestExceedsSystemCapacity verifies that the requested capacity exceeds the system capacity
+func verifyRequestExceedsSystemCapacity(ctx context.Context, namespace, podName, requestedCapacity, maxSystemCapacity string) {
+	GinkgoHelper()
+
+	requested, err := resource.ParseQuantity(requestedCapacity)
+	Expect(err).NotTo(HaveOccurred(),
+		"Failed to parse requested capacity %s for pod %s/%s", requestedCapacity, namespace, podName)
+
+	maxSystem, err := resource.ParseQuantity(maxSystemCapacity)
+	Expect(err).NotTo(HaveOccurred(),
+		"Failed to parse max system capacity %s", maxSystemCapacity)
+
+	// Verify requested > maxSystem
+	comparison := requested.Cmp(maxSystem)
+	Expect(comparison).To(BeNumerically(">", 0),
+		"Expected requested capacity %s to exceed system capacity %s, but it doesn't",
+		requestedCapacity, maxSystemCapacity)
+
+	fmt.Fprintf(GinkgoWriter, "Pod %s/%s: requested capacity %s > system capacity %s ✓\n",
+		namespace, podName, requestedCapacity, maxSystemCapacity)
+}
+
+// getAssignedNumaNode extracts the NUMA node assigned to a pod from its logs
+func getAssignedNumaNode(ctx context.Context, namespace, podName, containerName string) string {
+	GinkgoHelper()
+	var numaNode string
+
+	Eventually(func(g Gomega) {
+		devices, _ := getMemoryDevicesFromPodLogs(ctx, g, namespace, podName, containerName)
+		g.Expect(devices).NotTo(BeEmpty(),
+			"Expected pod %s/%s, container %s to have at least one device", namespace, podName, containerName)
+
+		// devices[0] contains just the NUMA ID (e.g., "0", "1", "2", "3")
+		// We need to construct the full NUMA node name (e.g., "numa-0", "numa-1", etc.)
+		numaID := devices[0]
+		g.Expect(numaID).To(MatchRegexp(`^\d+$`),
+			"Expected device ID to be a number, got %s", numaID)
+
+		numaNode = fmt.Sprintf("numa-%s", numaID)
+		fmt.Fprintf(GinkgoWriter, "Pod %s/%s assigned to NUMA node: %s\n", namespace, podName, numaNode)
+	}, checkPodLogsTimeout, checkPodLogsInterval).Should(Succeed())
+
+	return numaNode
+}
+
+// verifyNumaCapacityNotExceeded verifies that no NUMA node has exceeded its capacity
+func verifyNumaCapacityNotExceeded(ctx context.Context, namespace string, numaAllocations map[string][]string, requestedCapacity string, numaCapacities map[string]string) {
+	GinkgoHelper()
+
+	requested, err := resource.ParseQuantity(requestedCapacity)
+	Expect(err).NotTo(HaveOccurred(),
+		"Failed to parse requested capacity %s", requestedCapacity)
+
+	fmt.Fprintf(GinkgoWriter, "\n=== NUMA Node Capacity Verification ===\n")
+
+	for numaNode, pods := range numaAllocations {
+		if len(pods) == 0 {
+			continue
+		}
+
+		// Get the capacity for this NUMA node
+		numaCapacityStr, exists := numaCapacities[numaNode]
+		Expect(exists).To(BeTrue(),
+			"NUMA node %s not found in capacity map", numaNode)
+
+		numaCapacity, err := resource.ParseQuantity(numaCapacityStr)
+		Expect(err).NotTo(HaveOccurred(),
+			"Failed to parse NUMA capacity %s for node %s", numaCapacityStr, numaNode)
+
+		// Calculate total allocated capacity on this NUMA node
+		totalAllocated := requested.DeepCopy()
+		totalAllocated.Set(requested.Value() * int64(len(pods)))
+
+		// Verify allocated <= capacity
+		comparison := totalAllocated.Cmp(numaCapacity)
+		Expect(comparison).To(BeNumerically("<=", 0),
+			"NUMA node %s: allocated capacity %s (from %d pods × %s) exceeds node capacity %s",
+			numaNode, totalAllocated.String(), len(pods), requestedCapacity, numaCapacityStr)
+
+		fmt.Fprintf(GinkgoWriter, "NUMA node %s: %d pods × %s = %s <= %s (capacity) ✓\n",
+			numaNode, len(pods), requestedCapacity, totalAllocated.String(), numaCapacityStr)
+		fmt.Fprintf(GinkgoWriter, "  Pods on %s: %v\n", numaNode, pods)
+	}
+
+	fmt.Fprintf(GinkgoWriter, "=== All NUMA nodes within capacity limits ===\n\n")
+}

@@ -266,12 +266,55 @@ go test -v -tags=e2e ./... 2>&1
 
 ### What the Tests Verify
 
-The current e2e test suite verifies:
+The current e2e test suite includes the following tests:
 
-* **Memory device allocation**: Each pod receives the expected number of memory devices
-* **Capacity constraints**: Allocated memory capacity does not exceed the requested capacity
-* **Pod readiness**: Pods successfully start and become ready after resource allocation
-* **Environment variables**: Memory device information is properly injected into containers via environment variables
+#### Test 1: Basic Memory Allocation with Capacity Verification
+* **Manifest**: `basic-resourceclaimtemplate.yaml`
+* **Scenario**: Two pods each requesting 1Gi of memory
+* **Verifies**:
+  * Each pod receives the expected number of memory devices
+  * Allocated memory capacity does not exceed the requested capacity (1Gi)
+  * Pods successfully start and become ready after resource allocation
+  * Memory device information is properly injected into containers via environment variables
+
+#### Test 2: Partial Overcapacity - One Pod Pending
+* **Manifest**: `basic-oneovercapacity.yaml`
+* **Scenario**: Two pods each requesting 40Gi of memory (only one NUMA node has 40Gi available)
+* **Verifies**:
+  * Exactly one pod successfully receives a memory device allocation
+  * The allocated memory capacity does not exceed the maximum available capacity (40Gi)
+  * The allocated capacity is within the limits of a single NUMA node
+  * The second pod remains in Pending state due to insufficient resources
+  * The pending pod has the correct scheduling failure reason
+
+#### Test 3: Complete Overcapacity - All Pods Pending
+* **Manifest**: `basic-overcapacity.yaml`
+* **Scenario**: Two pods each requesting 50Gi of memory (exceeds maximum single NUMA node capacity of 40Gi)
+* **Verifies**:
+  * Both pods remain in Pending state
+  * No pods are scheduled since the requested capacity (50Gi) exceeds the maximum available on any single NUMA node (40Gi)
+  * Each pod has the correct scheduling failure reason indicating insufficient resources
+  * The requested capacity is correctly identified as exceeding system capacity
+
+#### Test 4: Multiple Pods Distributed Across NUMA Nodes
+* **Manifest**: `basic-multicapacity.yaml`
+* **Scenario**: Six pods each requesting 10Gi of memory distributed across NUMA nodes (total 60Gi out of 100Gi available)
+* **NUMA Node Capacities**:
+  * numa-0: 10Gi (can fit 1 pod)
+  * numa-1: 20Gi (can fit 2 pods)
+  * numa-2: 30Gi (can fit 3 pods)
+  * numa-3: 40Gi (can fit 4 pods)
+* **Verifies**:
+  * All six pods successfully receive memory device allocations
+  * Pods are distributed across multiple NUMA nodes
+  * Each pod's allocated capacity matches the requested capacity (10Gi)
+  * No NUMA node's capacity is exceeded (tracks allocations per NUMA node)
+  * Total allocated capacity (60Gi) does not exceed total system capacity (100Gi)
+  * Proper load distribution across available NUMA nodes
+* Run only this test
+```bash
+go test -v -tags=e2e -ginkgo.focus="should allocate multiple pods across NUMA nodes without exceeding capacity" 2>&1
+```
 
 ### Test Output
 
@@ -284,22 +327,32 @@ Running Suite: E2E Suite - /path/to/test/e2e
 =================================================================================================
 Random Seed: 1780423332
 
-Will run 1 of 1 specs
-•
+Will run 4 of 4 specs
+••••
 
-Ran 1 of 1 Specs in 11.055 seconds
-SUCCESS! -- 1 Passed | 0 Failed | 0 Pending | 0 Skipped
---- PASS: TestE2e (11.06s)
+Ran 4 of 4 Specs in 25.055 seconds
+SUCCESS! -- 4 Passed | 0 Failed | 0 Pending | 0 Skipped
+--- PASS: TestE2e (25.06s)
 PASS
-ok      sigs.k8s.io/dra-memory-driver/test/e2e  11.063s
+ok      sigs.k8s.io/dra-memory-driver/test/e2e  25.063s
 ```
 
 ### Running Specific Tests
 
-To run a specific test, use the `-run` flag:
+To run a specific test, use the Ginkgo focus options. For example:
 
 ```bash
-go test -v -tags=e2e -run "TestE2e/Test_memory_allocation"
+# Run only the basic capacity verification test
+go test -v -tags=e2e -ginkgo.focus="should allocate memory devices with capacity not exceeding request"
+
+# Run only the partial overcapacity test (one pod pending)
+go test -v -tags=e2e -ginkgo.focus="should handle overcapacity requests with one pod pending"
+
+# Run only the complete overcapacity test (all pods pending)
+go test -v -tags=e2e -ginkgo.focus="should reject all pods when requests exceed system capacity"
+
+# Run only the multi-capacity distribution test
+go test -v -tags=e2e -ginkgo.focus="should allocate multiple pods across NUMA nodes without exceeding capacity"
 ```
 
 ### Customizing Test Manifests
