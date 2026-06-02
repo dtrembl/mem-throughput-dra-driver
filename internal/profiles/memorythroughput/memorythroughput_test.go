@@ -38,15 +38,15 @@ func TestEnumerateDevices(t *testing.T) {
 	firstThroughput := pool.Slices[0].Devices[0].Capacity["mem"].Value
 	assert.Equal(t, "numa-0", pool.Slices[0].Devices[0].Name)
 	assert.Equal(t, int64(0), *pool.Slices[0].Devices[0].Attributes["numa"].IntValue)
-	assert.Zero(t, firstThroughput.Cmp(resource.MustParse("100Gi")))
+	assert.Zero(t, firstThroughput.Cmp(resource.MustParse("10Gi")))
 
 	secondThroughput := pool.Slices[0].Devices[1].Capacity["mem"].Value
 	assert.Equal(t, "numa-1", pool.Slices[0].Devices[1].Name)
 	assert.Equal(t, int64(1), *pool.Slices[0].Devices[1].Attributes["numa"].IntValue)
-	assert.Zero(t, secondThroughput.Cmp(resource.MustParse("100Gi")))
+	assert.Zero(t, secondThroughput.Cmp(resource.MustParse("20Gi")))
 
 	thirdThroughput := pool.Slices[0].Devices[2].Capacity["mem"].Value
 	assert.Equal(t, "numa-2", pool.Slices[0].Devices[2].Name)
 	assert.Equal(t, int64(2), *pool.Slices[0].Devices[2].Attributes["numa"].IntValue)
-	assert.Zero(t, thirdThroughput.Cmp(resource.MustParse("100Gi")))
+	assert.Zero(t, thirdThroughput.Cmp(resource.MustParse("30Gi")))
 }

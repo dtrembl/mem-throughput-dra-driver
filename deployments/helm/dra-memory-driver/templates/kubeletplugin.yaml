@@ -77,7 +77,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        # Simulated number of GPU devices the example driver will pretend to have.
+        # Simulated number of memory devices the example driver will pretend to have.
         - name: NUM_DEVICES
           value: {{ .Values.kubeletPlugin.numDevices | quote }}
         # Simulated number of NUMA nodes the mem profile will expose.

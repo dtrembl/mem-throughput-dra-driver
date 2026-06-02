@@ -238,6 +238,102 @@ Finally, you can run the following to cleanup your environment and delete the
 ./demo/clusters/kind/delete-cluster.sh
 ```
 
+## Running Tests
+
+This project includes end-to-end (e2e) tests to verify the driver's functionality.
+
+### Prerequisites for Testing
+
+In addition to the prerequisites listed above, running tests requires:
+* [Go 1.21+](https://go.dev/doc/install)
+* A running Kubernetes cluster with the driver installed (see [Demo](#demo) section above)
+
+### Running E2E Tests
+
+The e2e tests are located in the `test/e2e` directory and use the [Ginkgo](https://onsi.github.io/ginkgo/) testing framework.
+
+To run the e2e tests:
+
+```bash
+cd test/e2e
+go test -v -tags=e2e ./... 2>&1
+```
+
+**Note**: The e2e tests require:
+1. A Kubernetes cluster to be running (e.g., the kind cluster created in the demo)
+2. The driver to be installed and running in the cluster
+3. A valid kubeconfig file pointing to the cluster (usually `~/.kube/config`)
+
+### What the Tests Verify
+
+The current e2e test suite verifies:
+
+* **Memory device allocation**: Each pod receives the expected number of memory devices
+* **Capacity constraints**: Allocated memory capacity does not exceed the requested capacity
+* **Pod readiness**: Pods successfully start and become ready after resource allocation
+* **Environment variables**: Memory device information is properly injected into containers via environment variables
+
+### Test Output
+
+Successful test output will look like:
+
+```console
+$ go test -v -tags=e2e ./...
+=== RUN   TestE2e
+Running Suite: E2E Suite - /path/to/test/e2e
+=================================================================================================
+Random Seed: 1780423332
+
+Will run 1 of 1 specs
+•
+
+Ran 1 of 1 Specs in 11.055 seconds
+SUCCESS! -- 1 Passed | 0 Failed | 0 Pending | 0 Skipped
+--- PASS: TestE2e (11.06s)
+PASS
+ok      sigs.k8s.io/dra-memory-driver/test/e2e  11.063s
+```
+
+### Running Specific Tests
+
+To run a specific test, use the `-run` flag:
+
+```bash
+go test -v -tags=e2e -run "TestE2e/Test_memory_allocation"
+```
+
+### Customizing Test Manifests
+
+By default, the tests use manifests from the `demo/` directory. You can specify a different directory using the `-demo-manifests-dir` flag:
+
+```bash
+go test -v -tags=e2e -demo-manifests-dir=/path/to/manifests ./...
+```
+
+### Troubleshooting Tests
+
+If tests fail, check the following:
+
+1. **Cluster connectivity**: Ensure `kubectl get nodes` works
+2. **Driver installation**: Verify the driver pods are running with `kubectl get pod -n dra-memory-driver`
+3. **Resource availability**: Check that ResourceSlices exist with `kubectl get resourceslice`
+4. **Previous test cleanup**: Failed tests may leave resources behind. Clean them up with:
+   ```bash
+   kubectl delete namespace basic-resourceclaimtemplate --ignore-not-found=true
+   ```
+
+### Test Cleanup
+
+The tests automatically clean up resources after each test run using Ginkgo's `DeferCleanup` mechanism. However, if a test is interrupted (e.g., with Ctrl+C), you may need to manually clean up:
+
+```bash
+# List namespaces created by tests
+kubectl get namespaces | grep -E "basic-"
+
+# Delete test namespaces
+kubectl delete namespace basic-resourceclaimtemplate --ignore-not-found=true
+```
+
 ## Device Profiles
 
 The example driver can manage several different kinds of devices to demonstrate

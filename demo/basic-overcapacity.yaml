@@ -1,16 +1,16 @@
-# Example: Two Pods, One GPU Each
+# Example: Two Pods, One Memory Device Each (Exceeds Total Capacity)
 #
 # Two pods, one container each.
-# Each container asking for 1 distinct GPU.
+# Each container asking for more memory than total capacity available.
 #
-# Expected: Each pod gets a different GPU. Check with:
-#   kubectl logs -n basic-resourceclaimtemplate pod0 -c ctr0 | grep GPU_DEVICE
-#   kubectl logs -n basic-resourceclaimtemplate pod1 -c ctr0 | grep GPU_DEVICE
-# Each container should have 1 GPU_DEVICE env var with a distinct GPU ID.
+# Expected: Both pods should fail to schedule. Check with:
+#   kubectl logs -n basic-resourceclaimtemplate pod0 -c ctr0 | grep MEM_DEVICE
+#   kubectl logs -n basic-resourceclaimtemplate pod1 -c ctr0 | grep MEM_DEVICE
+# Pods should remain in Pending state.
 #
 # Driver requirements:
-#   Profile: gpu
-#   GPUs: 2
+#   Profile: mem
+#   NUMA nodes: 2
 #
 # Cluster requirements:
 #   Kubernetes 1.34+

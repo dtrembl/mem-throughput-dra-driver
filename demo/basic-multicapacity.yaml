@@ -1,16 +1,16 @@
-# Example: Two Pods, One GPU Each
+# Example: Multiple Pods, One Memory Device Each
 #
-# Two pods, one container each.
-# Each container asking for 1 distinct GPU.
+# Multiple pods, one container each.
+# Each container asking for memory from distinct NUMA nodes.
 #
-# Expected: Each pod gets a different GPU. Check with:
-#   kubectl logs -n basic-resourceclaimtemplate pod0 -c ctr0 | grep GPU_DEVICE
-#   kubectl logs -n basic-resourceclaimtemplate pod1 -c ctr0 | grep GPU_DEVICE
-# Each container should have 1 GPU_DEVICE env var with a distinct GPU ID.
+# Expected: Each pod gets a different memory device. Check with:
+#   kubectl logs -n basic-resourceclaimtemplate pod0 -c ctr0 | grep MEM_DEVICE
+#   kubectl logs -n basic-resourceclaimtemplate pod1 -c ctr0 | grep MEM_DEVICE
+# Each container should have 1 MEM_DEVICE_NUMA env var with a distinct memory device ID.
 #
 # Driver requirements:
-#   Profile: gpu
-#   GPUs: 2
+#   Profile: mem
+#   NUMA nodes: 2+
 #
 # Cluster requirements:
 #   Kubernetes 1.34+

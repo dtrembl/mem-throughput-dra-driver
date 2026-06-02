@@ -25,7 +25,7 @@ kubectl delete -f demo/<example-name>.yaml
 
 ## Notes
 
-- The default Helm chart configures **8 GPUs** per node, which is enough to run
+- The default Helm chart configures **4 NUMA nodes** per node, which is enough to run
   several examples simultaneously.
 - Each example creates its own namespace, so examples don't interfere with
   each other's resource names.

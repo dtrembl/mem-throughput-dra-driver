@@ -224,7 +224,6 @@ func (s *DeviceState) prepareDevices(claim *resourceapi.ResourceClaim) (profiles
 	perDeviceCDIContainerEdits := make(profiles.PerDeviceCDIContainerEdits)
 	for _, config := range configsMap {
 		// Apply the config to the list of results associated with it.
-
 		containerEdits, err := s.configHandler.ApplyConfig(&config.Config)
 		if err != nil {
 			return nil, fmt.Errorf("error applying config: %w", err)

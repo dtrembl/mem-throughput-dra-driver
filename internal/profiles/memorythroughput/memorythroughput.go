@@ -94,7 +94,7 @@ func applyMemoryConfig(result *resourceapi.DeviceRequestAllocationResult) (profi
 		}
 
 		if !config.MemoryThroughput.IsZero() {
-			envs = append(envs, fmt.Sprintf("MEM_DEVICE_NUMA_%s_THROUGHPUT_=%s", result.Device[5:], config.MemoryThroughput.String()))
+			envs = append(envs, fmt.Sprintf("MEM_DEVICE_NUMA_%s_THROUGHPUT=%s", result.Device[5:], config.MemoryThroughput.String()))
 		}
 
 		fmt.Println("INJECTING envs : ", envs)
