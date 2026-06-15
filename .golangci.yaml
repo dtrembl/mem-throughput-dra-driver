@@ -29,7 +29,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - sigs.k8s.io/dra-example-driver
+        - sigs.k8s.io/dra-memory-driver
   exclusions:
     generated: lax
     paths:

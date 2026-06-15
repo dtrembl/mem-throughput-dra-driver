@@ -18,8 +18,8 @@
 set -e
 
 # Use local Helm chart by default, or from OCI registry if HELM_CHART_PATH is set
-# Example: HELM_CHART_PATH="oci://registry.k8s.io/dra-example-driver/charts/dra-example-driver" make setup-e2e
-HELM_CHART_PATH="${HELM_CHART_PATH:-deployments/helm/dra-example-driver}"
+# Example: HELM_CHART_PATH="oci://registry.k8s.io/dra-memory-driver/charts/dra-memory-driver" make setup-e2e
+HELM_CHART_PATH="${HELM_CHART_PATH:-deployments/helm/dra-memory-driver}"
 
 # Skip building local driver image if using OCI registry chart
 if [[ "${HELM_CHART_PATH}" != oci://* ]]; then
@@ -39,8 +39,8 @@ helm upgrade -i \
 
 helm upgrade -i \
   --create-namespace \
-  --namespace dra-example-driver \
+  --namespace dra-memory-driver \
   --set webhook.enabled=true \
   --set kubeletPlugin.numDevices=10 \
-  dra-example-driver \
+  dra-memory-driver \
   ${HELM_CHART_PATH}

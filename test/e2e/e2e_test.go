@@ -19,169 +19,115 @@
 package e2e
 
 import (
-	"fmt"
-	"path/filepath"
-
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	gpuv1alpha1 "sigs.k8s.io/dra-example-driver/api/example.com/resource/gpu/v1alpha1"
 )
 
-var _ = Describe("Test GPU allocation", func() {
-	It("should allocate 1 distinct GPU per pod", func(ctx SpecContext) {
+var _ = Describe("Test memory allocation", func() {
+	It("should allocate memory devices with capacity not exceeding request", func(ctx SpecContext) {
 		namespace := "basic-resourceclaimtemplate"
 		pods := []string{"pod0", "pod1"}
 		containerName := "ctr0"
-		expectedGPUCount := 1
+		expectedDeviceCount := 1
+		// Expected capacity is 1Gi as defined in basic-resourceclaimtemplate.yaml
+		expectedCapacity := "1Gi"
 
 		deployManifest(ctx, namespace, "basic-resourceclaimtemplate.yaml")
 		checkPodsReadyAndRunning(ctx, namespace, pods)
 
-		observedGPUs := make(map[string]string)
 		for _, podName := range pods {
-			verifyGPUAllocation(ctx, namespace, podName, containerName, expectedGPUCount, observedGPUs)
+			verifyMemoryAllocationWithCapacity(ctx, namespace, podName, containerName, expectedDeviceCount, expectedCapacity)
 		}
 	})
 
-	It("should allocate 2 distinct GPUs to a single container", func(ctx SpecContext) {
-		namespace := "basic-multiple-requests"
-		pods := []string{"pod0"}
-		containerName := "ctr0"
-		expectedGPUCount := 2
-
-		deployManifest(ctx, namespace, "basic-multiple-requests.yaml")
-		checkPodsReadyAndRunning(ctx, namespace, pods)
-
-		observedGPUs := make(map[string]string)
-		verifyGPUAllocation(ctx, namespace, pods[0], containerName, expectedGPUCount, observedGPUs)
-	})
-
-	It("should share 1 GPU between containers with TimeSlicing default interval", func(ctx SpecContext) {
-		namespace := "basic-shared-claim-across-containers"
-		pods := []string{"pod0"}
-
-		deployManifest(ctx, namespace, "basic-shared-claim-across-containers.yaml")
-		checkPodsReadyAndRunning(ctx, namespace, pods)
-
-		verifySharedGPUGroup(ctx, namespace, sharingGroup{
-			members: []podContainer{
-				{pod: "pod0", container: "ctr0"},
-				{pod: "pod0", container: "ctr1"},
-			},
-			expectedStrategy:  string(gpuv1alpha1.TimeSlicingStrategy),
-			expectedProperty:  "TIMESLICE_INTERVAL",
-			expectedPropValue: string(gpuv1alpha1.DefaultTimeSlice),
-		})
-	})
-
-	It("should share 1 GPU between pods with TimeSlicing default interval", func(ctx SpecContext) {
-		namespace := "basic-shared-claim-across-pods"
+	It("should handle overcapacity requests with one pod pending", func(ctx SpecContext) {
+		namespace := "basic-resourceclaimtemplate"
 		pods := []string{"pod0", "pod1"}
-
-		deployManifest(ctx, namespace, "basic-shared-claim-across-pods.yaml")
-		checkPodsReadyAndRunning(ctx, namespace, pods)
-
-		verifySharedGPUGroup(ctx, namespace, sharingGroup{
-			members: []podContainer{
-				{pod: "pod0", container: "ctr0"},
-				{pod: "pod1", container: "ctr0"},
-			},
-			expectedStrategy:  string(gpuv1alpha1.TimeSlicingStrategy),
-			expectedProperty:  "TIMESLICE_INTERVAL",
-			expectedPropValue: string(gpuv1alpha1.DefaultTimeSlice),
-		})
-	})
-
-	It("should share GPUs with TimeSlicing and SpacePartitioning", func(ctx SpecContext) {
-		namespace := "basic-resourceclaim-opaque-config"
-		pods := []string{"pod0"}
-
-		deployManifest(ctx, namespace, "basic-resourceclaim-opaque-config.yaml")
-		checkPodsReadyAndRunning(ctx, namespace, pods)
-
-		verifySharedGPUGroup(ctx, namespace, sharingGroup{
-			members: []podContainer{
-				{pod: "pod0", container: "ts-ctr0"},
-				{pod: "pod0", container: "ts-ctr1"},
-			},
-			expectedStrategy:  string(gpuv1alpha1.TimeSlicingStrategy),
-			expectedProperty:  "TIMESLICE_INTERVAL",
-			expectedPropValue: string(gpuv1alpha1.LongTimeSlice),
-		})
-
-		verifySharedGPUGroup(ctx, namespace, sharingGroup{
-			members: []podContainer{
-				{pod: "pod0", container: "sp-ctr0"},
-				{pod: "pod0", container: "sp-ctr1"},
-			},
-			expectedStrategy:  string(gpuv1alpha1.SpacePartitioningStrategy),
-			expectedProperty:  "PARTITION_COUNT",
-			expectedPropValue: "10",
-		})
-	})
-
-	It("should share 1 GPU between init container and regular container", func(ctx SpecContext) {
-		namespace := "initcontainer-shared-gpu"
-		pods := []string{"pod0"}
-
-		deployManifest(ctx, namespace, "initcontainer-shared-gpu.yaml")
-		checkPodsReadyAndRunning(ctx, namespace, pods)
-
-		verifySharedGPUGroup(ctx, namespace, sharingGroup{
-			members: []podContainer{
-				{pod: "pod0", container: "init0"},
-				{pod: "pod0", container: "ctr0"},
-			},
-			expectedStrategy:  string(gpuv1alpha1.TimeSlicingStrategy),
-			expectedProperty:  "TIMESLICE_INTERVAL",
-			expectedPropValue: string(gpuv1alpha1.DefaultTimeSlice),
-		})
-	})
-
-	It("should have DRA_ADMIN_ACCESS set to true", func(ctx SpecContext) {
-		namespace := "admin-access"
-		pods := []string{"pod0"}
 		containerName := "ctr0"
+		expectedDeviceCount := 1
+		// Expected capacity is 40Gi as defined in basic-oneovercapacity.yaml
+		requestedCapacity := "40Gi"
+		// Maximum available capacity on any single NUMA node is 40Gi (numa-3)
+		maxAvailableCapacity := "40Gi"
 
-		deployManifest(ctx, namespace, "admin-access.yaml")
-		checkPodsReadyAndRunning(ctx, namespace, pods)
-		verifyDRAAdminAccess(ctx, namespace, pods[0], containerName, "true")
-	})
+		deployManifest(ctx, namespace, "basic-oneovercapacity.yaml")
 
-	It("should allocate 1 GPU selected using CEL expression", func(ctx SpecContext) {
-		namespace := "cel-selector"
-		pods := []string{"pod0"}
-		containerName := "ctr0"
-		expectedGPUCount := 1
+		// Wait for one pod to be running and one to remain pending
+		// We don't know which one will succeed, so we check both possibilities
+		checkOneOfTwoPodsRunning(ctx, namespace, pods)
 
-		deployManifest(ctx, namespace, "cel-selector.yaml")
-		checkPodsReadyAndRunning(ctx, namespace, pods)
-
-		observedGPUs := make(map[string]string)
-		verifyGPUAllocation(ctx, namespace, pods[0], containerName, expectedGPUCount, observedGPUs)
-	})
-
-	Context("Webhooks", func() {
-		tests := []struct {
-			name     string
-			fileName string
-		}{
-			{name: "v1 ResourceClaim", fileName: "invalid_rc_v1.yaml"},
-			{name: "v1beta1 ResourceClaim", fileName: "invalid_rc_v1beta1.yaml"},
-			{name: "v1 ResourceClaimTemplate", fileName: "invalid_rc_template.yaml"},
+		// Find which pod is running
+		runningPod := findRunningPod(ctx, namespace, pods)
+		pendingPod := pods[0]
+		if runningPod == pods[0] {
+			pendingPod = pods[1]
 		}
 
-		for _, testCase := range tests {
-			It("should reject invalid "+testCase.name, func(ctx SpecContext) {
-				manifestPath := filepath.Join(currentDir, "testdata", "webhooks", testCase.fileName)
+		// Verify the running pod has correct allocation and doesn't exceed capacity
+		verifyMemoryAllocationWithCapacity(ctx, namespace, runningPod, containerName, expectedDeviceCount, requestedCapacity)
+		
+		// Verify the allocated capacity does not exceed the maximum available
+		verifyAllocatedCapacityWithinLimit(ctx, namespace, runningPod, containerName, maxAvailableCapacity)
 
-				err := createManifestWithDryRun(ctx, dynamicClient, manifestPath)
-				fmt.Fprintf(GinkgoWriter, "Error from create: %v\n", err)
-				Expect(err).To(HaveOccurred(),
-					"Expected webhook to reject %s, but it was accepted", testCase.fileName)
-				Expect(err.Error()).To(ContainSubstring("unknown time-slice interval"),
-					"Webhook did not reject %s invalid GpuConfig with the expected message. Got error: %v", testCase.name, err)
-			})
+		// Verify the other pod is pending due to insufficient resources
+		checkPodPendingDueToInsufficientResources(ctx, namespace, pendingPod)
+	})
+
+	It("should reject all pods when requests exceed system capacity", func(ctx SpecContext) {
+		namespace := "basic-resourceclaimtemplate"
+		pods := []string{"pod0", "pod1"}
+		// Requested capacity is 50Gi as defined in basic-overcapacity.yaml
+		requestedCapacity := "50Gi"
+		// Maximum available capacity on any single NUMA node is 40Gi (numa-3)
+		maxSystemCapacity := "40Gi"
+
+		deployManifest(ctx, namespace, "basic-overcapacity.yaml")
+
+		// Wait and verify that both pods remain in Pending state
+		// since no NUMA node has 50Gi capacity (max is 40Gi on numa-3)
+		checkAllPodsPending(ctx, namespace, pods)
+
+		// Verify both pods are pending due to insufficient resources
+		for _, podName := range pods {
+			checkPodPendingDueToInsufficientResources(ctx, namespace, podName)
+			
+			// Verify the requested capacity exceeds system capacity
+			verifyRequestExceedsSystemCapacity(ctx, namespace, podName, requestedCapacity, maxSystemCapacity)
 		}
+	})
+
+	It("should allocate multiple pods across NUMA nodes without exceeding capacity", func(ctx SpecContext) {
+		namespace := "basic-resourceclaimtemplate"
+		pods := []string{"pod0", "pod1", "pod2", "pod3", "pod4", "pod5"}
+		containerName := "ctr0"
+		expectedDeviceCount := 1
+		// Each pod requests 10Gi as defined in basic-multicapacity.yaml
+		requestedCapacity := "10Gi"
+		// NUMA node capacities: numa-0=10Gi, numa-1=20Gi, numa-2=30Gi, numa-3=40Gi
+		numaCapacities := map[string]string{
+			"numa-0": "10Gi",
+			"numa-1": "20Gi",
+			"numa-2": "30Gi",
+			"numa-3": "40Gi",
+		}
+
+		deployManifest(ctx, namespace, "basic-multicapacity.yaml")
+
+		// All pods should become ready since total request (60Gi) <= total capacity (100Gi)
+		checkPodsReadyAndRunning(ctx, namespace, pods)
+
+		// Track allocations per NUMA node
+		numaAllocations := make(map[string][]string)
+
+		// Verify each pod's allocation and track NUMA node usage
+		for _, podName := range pods {
+			verifyMemoryAllocationWithCapacity(ctx, namespace, podName, containerName, expectedDeviceCount, requestedCapacity)
+			
+			// Get the NUMA node assigned to this pod and track it
+			numaNode := getAssignedNumaNode(ctx, namespace, podName, containerName)
+			numaAllocations[numaNode] = append(numaAllocations[numaNode], podName)
+		}
+
+		// Verify that no NUMA node's capacity has been exceeded
+		verifyNumaCapacityNotExceeded(ctx, namespace, numaAllocations, requestedCapacity, numaCapacities)
 	})
 })

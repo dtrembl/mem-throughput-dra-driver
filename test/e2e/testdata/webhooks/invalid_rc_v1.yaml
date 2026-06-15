@@ -5,19 +5,19 @@ metadata:
 spec:
   devices:
     requests:
-    - name: ts-gpu
+    - name: ts-memory
       exactly:
-        deviceClassName: gpu.example.com
-    - name: sp-gpu
+        deviceClassName: memory.example.com
+    - name: sp-memory
       exactly:
-        deviceClassName: gpu.example.com
+        deviceClassName: memory.example.com
     config:
-    - requests: ["ts-gpu"]
+    - requests: ["ts-memory"]
       opaque:
-        driver: gpu.example.com
+        driver: memory.example.com
         parameters:
-          apiVersion: gpu.resource.example.com/v1alpha1
-          kind: GpuConfig
+          apiVersion: memory.resource.example.com/v1alpha1
+          kind: MemoryConfig
           sharing:
             strategy: TimeSlicing
             timeSlicingConfig:
