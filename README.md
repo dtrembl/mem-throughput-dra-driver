@@ -33,10 +33,6 @@ The procedure below has been tested and verified on both Linux and Mac.
 We start by first cloning this repository and `cd`ing into it. All of the
 scripts and example Pod specs used in this demo are contained here, so take a
 moment to browse through the various files and see what's available:
-```
-git clone https://github.com/kubernetes-sigs/dra-memory-driver.git
-cd dra-memory-driver
-```
 
 **Note**: The scripts will automatically use either `docker`, or `podman` as the container tool command, whichever
 can be found in the PATH. To override this behavior, set `CONTAINER_TOOL` environment variable either by calling
